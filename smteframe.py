@@ -11,7 +11,7 @@ import undoMenu
 import display
 import undo
 
-class SMTE(tk.Frame):
+class SMTEFrame(tk.Frame):
     def __init__(self, master=None):
         tk.Frame.__init__(self, master)
         self.pack()
@@ -46,17 +46,14 @@ def set_title(name):
     smte.master.title("Simple Minded Text Editor " + separator + name)
 
 __dependencies = {
-    'loaded': False,
-    'display': display.display,
-    'set_title': set_title}
+    'loaded':       False,
+    'display':      display.display,
+    'set_title':    set_title,
+    'clear':        display.clear
+}
 
 root = tk.Tk()
-smte = SMTE(master = root)
-
-fonts=list(tkFont.families())
-fonts.sort()
-print '\n'.join(fonts)
-
+smte = SMTEFrame(master = root)
 set_title("")
 smte.mainloop()
 

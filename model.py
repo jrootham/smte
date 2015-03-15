@@ -15,7 +15,6 @@ class Model:
         self.end_select_line = 0
         self.end_select_column = 0
         self.tabsize = 4
-        self.export_name = ''
 
     def save(self, cursor):
         state_sql = "UPDATE state SET export=?,mark_line=?,mark_column=?,tabsize=?,"
@@ -55,23 +54,18 @@ class Model:
         self.mark_column = 0
         self.mark_line += 1
 
-    def delete(self, count):
-        if count <= self.mark_line:
-            line = self.contents[self.mark_line]
-            self.contents[self.mark_line] = line[:self.mark_line-count] + line[self.mark_line:]
-
     def export(self):
         file = open(self.export_name, 'w')
         file.write('\n'.join(self.contents))
         file.close()
 
     def up(self):
-        if self.mark_line >= 0:
+        if self.mark_line > 0:
             self.mark_line -= 1
         self.set_column()
 
     def down(self):
-        if self.mark_line < len(self.contents):
+        if self.mark_line < len(self.contents) - 1:
             self.mark_line += 1
         self.set_column()
 
@@ -85,3 +79,46 @@ class Model:
             if self.mark_line > 0:
                 self.mark_line -= 1
                 self.mark_column = len(self.contents[self.mark_line])
+
+    def right(self):
+        if self.mark_column < len(self.contents[self.mark_line]):
+            self.mark_column += 1
+        else:
+            if self.mark_line < len(self.contents) - 1:
+                self.mark_line += 1
+                self.mark_column = 0
+
+    def can_delete(self):
+        return self.mark_line < len(self.contents) - 1 or self.mark_column < len(self.contents[self.mark_line])
+
+    def next_char(self):
+        if self.mark_column == len(self.contents[self.mark_line]):
+            char = '\n'
+        else:
+            char = self.contents[self.mark_line][self.mark_column:self.mark_column + 1]
+        return char
+
+    def delete(self, count):
+        if self.mark_column + count <= len(self.contents[self.mark_line]):
+            line = self.contents[self.mark_line]
+            self.contents[self.mark_line] = line[:self.mark_column] + line[self.mark_column + count:]
+        else:
+            self.contents[self.mark_line] += self.contents[self.mark_line + 1]
+            self.contents.pop(self.mark_line + 1)
+
+    def can_backspace(self):
+        return self.mark_line > 0 or self.mark_column > 0
+
+    def last_char(self):
+        if self.mark_column == 0:
+            char = '\n'
+        else:
+            char = self.contents[self.mark_line][self.mark_column - 1:self.mark_column]
+        return char
+
+    def backspace(self, count):
+        self.left()
+        self.delete(count)
+
+    def make_tab(self):
+        return (self.tabsize - (self.mark_column % self.tabsize)) * " "

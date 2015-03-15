@@ -3,6 +3,7 @@ __author__ = 'jrootham'
 import memento_undo.memento as memento
 import display
 import model
+import tkMessageBox as box
 
 ROOT, INSERT, DELETE, BACKSPACE, RIGHT, LEFT, UP, DOWN, SET_MARK = range(1, 10)
 
@@ -47,6 +48,13 @@ def create_db(cursor):
 
     cursor.execute(selection)
 
+    number = "CREATE TABLE number ("
+    number += "id INTEGER PRIMARY KEY,"
+    number += "data INTEGER"
+    number += ");"
+
+    cursor.execute(number)
+
     fill_db(cursor)
 
     cursor.execute("END TRANSACTION;")
@@ -65,7 +73,18 @@ def fill_db(cursor):
 
 class SMTE(memento.Memento):
     def __init__(self, cursor):
-        make_thing = {ROOT: make_root, INSERT: make_insert}
+        make_thing = \
+            {
+                ROOT:       make_root,
+                INSERT:     make_insert,
+                LEFT:       make_left,
+                RIGHT:      make_right,
+                UP:         make_up,
+                DOWN:       make_down,
+                DELETE:     make_delete,
+                BACKSPACE:  make_backspace
+            }
+
         memento.Memento.__init__(self, cursor, make_thing)
         self.model = model.Model(cursor)
         self.goto(self.model, self.current)
@@ -75,27 +94,67 @@ class SMTE(memento.Memento):
     def unload(self):
         pass
 
-
 def unload():
     global smte
 
     smte.unload()
     smte = None
 
-def key_pressed(char):
+def is_loaded():
     global smte
 
-    if (not smte is None) and len(char) == 1:
+    result = not smte is None
+    if not result:
+        box.showerror("Edit Error", "File not loaded")
+    return result
+
+def do_undo():
+    if is_loaded():
+        pass
+
+def do_redo():
+    if is_loaded():
+        pass
+
+def key_pressed(char):
+    if is_loaded() and len(char) == 1:
         insert(char)
-        display.display(smte.model)
     else:
         print len(char), char
 
-def backspace():
-    pass
+def left_pressed():
+    if is_loaded():
+        left()
 
-def delete():
-    pass
+def right_pressed():
+    if is_loaded():
+        right()
+
+def up_pressed():
+    if is_loaded():
+        up()
+
+def down_pressed():
+    if is_loaded():
+        down()
+
+def backspace_pressed():
+    global smte
+
+    if is_loaded():
+        if smte.model.can_backspace():
+            backspace()
+
+def delete_pressed():
+    global smte
+
+    if is_loaded():
+        if smte.model.can_delete():
+            delete()
+
+def tab_pressed():
+    if is_loaded():
+        tab();
 
 def construct(thing):
     global smte
@@ -104,6 +163,7 @@ def construct(thing):
     smte.connect(thing)
     thing.redo(smte.model)
     display.display(smte.model)
+    smte.draw_all()
     smte.save(smte.cursor)
     smte.cursor.execute("END TRANSACTION;")
 
@@ -127,24 +187,38 @@ class Root(memento.UndoRedo):
     def redo(self, model):
         model.reset()
 
-# Insert functions
+# modify functions
 
-def make_insert(cursor, id, parent, data_id):
+def modify(cursor, data_id):
     result = cursor.execute("SELECT data FROM modify WHERE id=?;", (data_id,))
-    row = result.fetchone()
+    return result.fetchone()[0]
 
-    return Insert(id, parent, row[0])
-
-def insert(char):
-    global smte
-
-    construct(Insert(smte.next(), smte.current, char))
-
-
-class Insert(memento.UndoRedo):
+class Modify(memento.UndoRedo):
     def __init__(self, id, parent, char):
         memento.UndoRedo.__init__(self, id, parent)
         self.char = char
+
+    def save(self, cursor, type):
+        memento.UndoRedo.save(self,cursor)
+        modify_sql = "INSERT INTO modify (id,data) VALUES(?,?)"
+        modify_id = smte.next()
+        cursor.execute(modify_sql, (modify_id, self.char))
+        update_sql = 'UPDATE undo_redo SET type=?,data=? WHERE id=?;'
+        cursor.execute(update_sql, (type, modify_id, self.id))
+
+# Insert functions
+
+def make_insert(cursor, id, parent, data_id):
+    return Insert(id, parent, modify(cursor, data_id))
+
+def insert(char):
+    global smte
+    construct(Insert(smte.next(), smte.current, char))
+
+
+class Insert(Modify):
+    def __init__(self, id, parent, char):
+        Modify.__init__(self, id, parent, char)
 
     def name(self):
         return 'In'
@@ -155,21 +229,88 @@ class Insert(memento.UndoRedo):
     def redo(self, model):
         model.char(self.char)
 
+    def undo(self, model):
+        model.backspace(len(self.char))
+
     def save(self, cursor):
-        memento.UndoRedo.save(self,cursor)
-        modify_sql = "INSERT INTO modify (id,data) VALUES(?,?)"
-        modify_id = smte.next()
-        cursor.execute(modify_sql, (modify_id, self.char))
-        update_sql = 'UPDATE undo_redo SET type=?,data=? WHERE id=?;'
-        cursor.execute(update_sql, (INSERT, modify_id, self.id))
+        Modify.save(self, cursor, INSERT)
+# Tab
+
+def tab():
+    global smte
+    construct(Insert(smte.next(), smte.current, smte.model.make_tab()))
+
+# Delete
+
+def make_delete(cursor, id, parent, data_id):
+    return Delete(id, parent, modify(cursor, data_id))
+
+def delete():
+    global smte
+
+    char = smte.model.next_char()
+    if not char is None:
+        construct(Delete(smte.next(), smte.current, char))
+
+
+class Delete(Modify):
+    def __init__(self, id, parent, char):
+        Modify.__init__(self, id, parent, char)
+
+    def name(self):
+        return 'Dl'
+
+    def colour(self):
+        return 'red'
+
+    def redo(self, model):
+        model.delete(len(self.char))
+
+    def undo(self, model):
+        pass
+
+    def save(self, cursor):
+        Modify.save(self, cursor, DELETE)
+
+# Backspace
+
+def make_backspace(cursor, id, parent, data_id):
+    return Backspace(id, parent, modify(cursor, data_id))
+
+def backspace():
+    global smte
+
+    char = smte.model.last_char()
+    if not char is None:
+        construct(Backspace(smte.next(), smte.current, char))
+
+
+class Backspace(Modify):
+    def __init__(self, id, parent, char):
+        Modify.__init__(self, id, parent, char)
+
+    def name(self):
+        return 'Bs'
+
+    def colour(self):
+        return 'red'
+
+    def redo(self, model):
+        model.backspace(len(self.char))
+
+    def save(self, cursor):
+        Modify.save(self, cursor, BACKSPACE)
 
 # Move
 
+def move_mark(cursor, mark_id):
+    return cursor.execute("SELECT line,column FROM mark WHERE id=?;", (mark_id,)).fetchone()
+
 class Move(memento.UndoRedo):
-    def __init__(self, id, parent, model):
+    def __init__(self, id, parent, mark_line, mark_column):
         memento.UndoRedo.__init__(self, id, parent)
-        self.line = model.mark_line
-        self.column = model.mark_column
+        self.line = mark_line
+        self.column = mark_column
 
     def colour(self):
         return 'blue'
@@ -184,18 +325,18 @@ class Move(memento.UndoRedo):
 
 # Left functions
 
-def make_left(cursor, id, parent, model):
-    return Left(id, parent, model)
+def make_left(cursor, id, parent, mark_id):
+    mark = move_mark(cursor, mark_id)
+    return Left(id, parent, mark[0], mark[1])
 
 def left():
     global smte
-
-    construct(Left(smte.next(), smte.current, smte.model))
+    construct(Left(smte.next(), smte.current, smte.model.mark_line, smte.model.mark_column))
 
 
 class Left(Move):
-    def __init__(self, id, parent, model):
-        Move.__init__(self, id, parent, model)
+    def __init__(self, id, parent, mark_line, mark_column):
+        Move.__init__(self, id, parent, mark_line, mark_column)
 
     def name(self):
         return 'L'
@@ -204,22 +345,22 @@ class Left(Move):
         model.left()
 
     def save(self, cursor):
-        Move.save(cursor, LEFT)
+        Move.save(self, cursor, LEFT)
 
 # Right functions
 
-def make_right(cursor, id, parent):
-    return Right(id, parent)
+def make_right(cursor, id, parent, mark_id):
+    mark = move_mark(cursor, mark_id)
+    return Right(id, parent, mark[0], mark[1])
 
 def right():
     global smte
-
-    construct(Right(smte.next(), smte.current))
+    construct(Right(smte.next(), smte.current, smte.model.mark_line, smte.model.mark_column))
 
 
 class Right(Move):
-    def __init__(self, id, parent):
-        Move.__init__(self, id, parent)
+    def __init__(self, id, parent, mark_line, mark_column):
+        Move.__init__(self, id, parent, mark_line, mark_column)
 
     def name(self):
         return 'R'
@@ -228,28 +369,52 @@ class Right(Move):
         model.right()
 
     def save(self, cursor):
-        Move.save(cursor, RIGHT)
+        Move.save(self, cursor, RIGHT)
 
 # Up functions
 
-def make_up(cursor, id, parent):
-    return Right(id, parent)
+def make_up(cursor, id, parent, mark_id):
+    mark = move_mark(cursor, mark_id)
+    return Up(id, parent, mark[0], mark[1])
 
 def up():
     global smte
-
-    construct(Up(smte.next(), smte.current))
+    construct(Up(smte.next(), smte.current, smte.model.mark_line, smte.model.mark_column))
 
 
 class Up(Move):
-    def __init__(self, id, parent):
-        Move.__init__(self, id, parent)
+    def __init__(self, id, parent, mark_line, mark_column):
+        Move.__init__(self, id, parent, mark_line, mark_column)
 
     def name(self):
         return 'U'
 
     def redo(self, model):
-        model.right()
+        model.up()
 
     def save(self, cursor):
-        Move.save(cursor, UP)
+        Move.save(self, cursor, UP)
+
+# Down functions
+
+def make_down(cursor, id, parent, mark_id):
+    mark = move_mark(cursor, mark_id)
+    return Down(id, parent, mark[0], mark[1])
+
+def down():
+    global smte
+    construct(Down(smte.next(), smte.current, smte.model.mark_line, smte.model.mark_column))
+
+
+class Down(Move):
+    def __init__(self, id, parent, mark_line, mark_column):
+        Move.__init__(self, id, parent, mark_line, mark_column)
+
+    def name(self):
+        return 'U'
+
+    def redo(self, model):
+        model.down()
+
+    def save(self, cursor):
+        Move.save(self, cursor, DOWN)

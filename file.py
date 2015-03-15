@@ -70,6 +70,7 @@ def __closeFile():
         __connect.close()
         __dependencies["loaded"] = False
         undo.unload()
+        __dependencies["clear"]()
 
 def __export():
     if __dependencies['loaded']:
