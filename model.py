@@ -4,7 +4,6 @@ class Model:
 
     def __init__(self, cursor):
         self.reset()
-        self.load(cursor)
 
     def reset(self):
         self.contents = ['']
@@ -15,17 +14,6 @@ class Model:
         self.end_select_line = 0
         self.end_select_column = 0
         self.tabsize = 4
-
-    def save(self, cursor):
-        state_sql = "UPDATE state SET export=?,mark_line=?,mark_column=?,tabsize=?,"
-        state_sql += "start_select_line=?,start_select_column=?,end_select_line=?,end_select_column=?;"
-        cursor.execute(state_sql, (self.export,self.mark_line, self.mark_column, self.tabsize,
-        self.start_select_line, self.start_select_column, self.end_select_line, self.end_select_column))
-
-    def load(self, cursor):
-        data = cursor.execute("SELECT export,tabsize FROM state WHERE id=1;").fetchone()
-        self.export_name = data[0]
-        self.tabsize = data[1]
 
     def char(self, text):
         if text == '\r':
@@ -88,6 +76,10 @@ class Model:
                 self.mark_line += 1
                 self.mark_column = 0
 
+    def set_mark(self, line, column):
+        self.mark_line = line
+        self.mark_column = column
+
     def can_delete(self):
         return self.mark_line < len(self.contents) - 1 or self.mark_column < len(self.contents[self.mark_line])
 
@@ -122,3 +114,20 @@ class Model:
 
     def make_tab(self):
         return (self.tabsize - (self.mark_column % self.tabsize)) * " "
+
+class SavedModel(Model):
+    def __init__(self, cursor):
+        self.reset()
+        self.load(cursor)
+
+    def save(self, cursor):
+        state_sql = "UPDATE state SET export=?,mark_line=?,mark_column=?,tabsize=?,"
+        state_sql += "start_select_line=?,start_select_column=?,end_select_line=?,end_select_column=?;"
+        cursor.execute(state_sql, (self.export,self.mark_line, self.mark_column, self.tabsize,
+        self.start_select_line, self.start_select_column, self.end_select_line, self.end_select_column))
+
+    def load(self, cursor):
+        data = cursor.execute("SELECT export,tabsize FROM state WHERE id=1;").fetchone()
+        self.export_name = data[0]
+        self.tabsize = data[1]
+

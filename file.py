@@ -2,18 +2,16 @@ __author__ = 'jrootham'
 
 import os.path
 
-import tkMessageBox as box
 import sqlite3 as sq
-import Tkinter as tk
-import tkSimpleDialog as tksd
-import tkFileDialog as tkfd
+import tkinter as tk
 
 import undo
 
-def menu(menuBar,  dependencies):
+def menu(menuBar,  dependencies, frame):
     global __dependencies
 
     __dependencies = dependencies
+    __dependencies['frame'] = frame
 
     fileMenu = tk.Menu(menuBar)
     menuBar.add_cascade(label='File', menu= fileMenu)
@@ -63,7 +61,7 @@ def load(filename):
     __connect = set_connect(filename)
     __dependencies["set_title"](filename)
     __dependencies['loaded'] = True
-    undo.smte = undo.SMTE(__connect.cursor())
+    undo.smte = undo.SMTE(__connect.cursor(), __dependencies['frame'])
 
 def __closeFile():
     if __dependencies['loaded']:

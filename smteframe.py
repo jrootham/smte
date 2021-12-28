@@ -2,9 +2,7 @@
 
 __author__ = 'jrootham'
 
-import Tkinter as tk
-import tkMessageBox as box
-import tkFont
+import tkinter as tk
 
 import file
 import undoMenu
@@ -13,18 +11,21 @@ import undo
 
 class SMTEFrame(tk.Frame):
     def __init__(self, master=None):
+        global  __dependencies
+
         tk.Frame.__init__(self, master)
         self.pack()
-        display.make()
-        makeMenu(master)
 
-def makeMenu(parent):
+        display.make()
+        makeMenu(master, self)
+
+def makeMenu(parent, frame):
     global  __dependencies
 
     top = parent.winfo_toplevel()
     menuBar = tk.Menu(top)
     top['menu'] = menuBar
-    file.menu(menuBar, __dependencies)
+    file.menu(menuBar, __dependencies, frame)
     undoMenu.menu(menuBar, __dependencies)
     help(menuBar)
 
@@ -43,7 +44,7 @@ def set_title(name):
     else:
         separator = ""
 
-    smte.master.title("Simple Minded Text Editor " + separator + name)
+    frame.master.title("Simple Minded Text Editor " + separator + name)
 
 __dependencies = {
     'loaded':       False,
@@ -53,7 +54,7 @@ __dependencies = {
 }
 
 root = tk.Tk()
-smte = SMTEFrame(master = root)
+frame = SMTEFrame(master = root)
 set_title("")
-smte.mainloop()
+frame.mainloop()
 

@@ -1,10 +1,7 @@
 __author__ = 'jrootham'
 
-import Tkinter as tk
+import tkinter as tk
 import undo
-
-HEIGHT = 16
-WIDTH = 9
 
 __canvas = None
 
@@ -21,6 +18,8 @@ def make():
     __canvas.bind("<Up>", up)
     __canvas.bind("<Down>", down)
     __canvas.bind("<Tab>", tab)
+    __canvas.bind("<Control-z>", do_undo)
+    __canvas.bind("<Control-y>", do_redo)
     set_focus()
 
 def set_focus():
@@ -52,6 +51,12 @@ def down(event):
 def tab(event):
     undo.tab_pressed()
 
+def do_undo(event):
+    undo.do_undo()
+
+def do_redo(event):
+    undo.do_redo()
+
 def clear():
     global __canvas
     __canvas.delete(tk.ALL)
@@ -65,9 +70,11 @@ def display(model):
     for line in model.contents:
         text = line.expandtabs(model.tabsize)
         __canvas.create_text((0,y), text = text, fill = "black", anchor = tk.NW, font =("Ubuntu Mono", 14))
-        y += HEIGHT
+        y += undo.HEIGHT
 
-    x = model.mark_column * WIDTH
-    y = model.mark_line * HEIGHT
+    x = model.mark_column * undo.WIDTH
+    y = model.mark_line * undo.HEIGHT
 
-    __canvas.create_line(x, y, x, y + HEIGHT)
+    __canvas.create_line(x, y, x, y + undo.HEIGHT)
+
+    set_focus()

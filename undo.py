@@ -3,11 +3,15 @@ __author__ = 'jrootham'
 import memento_undo.memento as memento
 import display
 import model
-import tkMessageBox as box
+import ask
+
+HEIGHT = 16
+WIDTH = 9
 
 ROOT, INSERT, DELETE, BACKSPACE, RIGHT, LEFT, UP, DOWN, SET_MARK = range(1, 10)
 
 smte = None
+
 
 def create_db(cursor):
     cursor.execute("BEGIN TRANSACTION;")
@@ -72,7 +76,7 @@ def fill_db(cursor):
     cursor.execute(undo_redo)
 
 class SMTE(memento.Memento):
-    def __init__(self, cursor):
+    def __init__(self, cursor, frame):
         make_thing = \
             {
                 ROOT:       make_root,
@@ -86,13 +90,27 @@ class SMTE(memento.Memento):
             }
 
         memento.Memento.__init__(self, cursor, make_thing)
-        self.model = model.Model(cursor)
+        self.ask = make_ask_fn(ask.Ask(frame))
+
+        self.model = model.SavedModel(cursor)
         self.goto(self.model, self.current)
         display.display(self.model)
         display.set_focus()
 
+    def do_undo(self):
+        memento.Memento.undo(self, self.model)
+
+    def do_redo(self):
+        memento.Memento.redo(self, self.model, self.ask)
+
     def unload(self):
         pass
+
+def make_ask_fn(ask):
+    def fn(current):
+        return ask.ask(current)
+
+    return fn
 
 def unload():
     global smte
@@ -109,18 +127,24 @@ def is_loaded():
     return result
 
 def do_undo():
+    global smte
+
     if is_loaded():
-        pass
+        smte.do_undo()
+        after_undo_redo(smte)
 
 def do_redo():
+    global smte
+
     if is_loaded():
-        pass
+        smte.do_redo()
+        after_undo_redo(smte)
 
 def key_pressed(char):
     if is_loaded() and len(char) == 1:
         insert(char)
     else:
-        print len(char), char
+        print (len(char), char)
 
 def left_pressed():
     if is_loaded():
@@ -167,6 +191,13 @@ def construct(thing):
     smte.save(smte.cursor)
     smte.cursor.execute("END TRANSACTION;")
 
+def after_undo_redo(smte):
+    smte.cursor.execute("BEGIN TRANSACTION;")
+    display.display(smte.model)
+    smte.draw_all()
+    smte.save(smte.cursor)
+    smte.cursor.execute("END TRANSACTION;")
+
 
 
 # Root functions
@@ -206,6 +237,12 @@ class Modify(memento.UndoRedo):
         update_sql = 'UPDATE undo_redo SET type=?,data=? WHERE id=?;'
         cursor.execute(update_sql, (type, modify_id, self.id))
 
+    def ask_option(self):
+        char = self.char.replace('\n', '\\n')
+        char = char.replace('\t', '\\t')
+        char = char.replace('\r', '\\r')
+        return "'" + char + "'"
+
 # Insert functions
 
 def make_insert(cursor, id, parent, data_id):
@@ -240,6 +277,18 @@ def tab():
     global smte
     construct(Insert(smte.next(), smte.current, smte.model.make_tab()))
 
+# Remove
+
+class Remove(Modify):
+    def __init__(self, id, parent, char):
+        Modify.__init__(self, id, parent, char)
+
+    def colour(self):
+        return 'red'
+
+    def undo(self, model):
+        model.insert(self.char)
+
 # Delete
 
 def make_delete(cursor, id, parent, data_id):
@@ -253,21 +302,15 @@ def delete():
         construct(Delete(smte.next(), smte.current, char))
 
 
-class Delete(Modify):
+class Delete(Remove):
     def __init__(self, id, parent, char):
-        Modify.__init__(self, id, parent, char)
+        Remove.__init__(self, id, parent, char)
 
     def name(self):
         return 'Dl'
 
-    def colour(self):
-        return 'red'
-
     def redo(self, model):
         model.delete(len(self.char))
-
-    def undo(self, model):
-        pass
 
     def save(self, cursor):
         Modify.save(self, cursor, DELETE)
@@ -285,15 +328,12 @@ def backspace():
         construct(Backspace(smte.next(), smte.current, char))
 
 
-class Backspace(Modify):
+class Backspace(Remove):
     def __init__(self, id, parent, char):
-        Modify.__init__(self, id, parent, char)
+        Remove.__init__(self, id, parent, char)
 
     def name(self):
         return 'Bs'
-
-    def colour(self):
-        return 'red'
 
     def redo(self, model):
         model.backspace(len(self.char))
@@ -314,6 +354,9 @@ class Move(memento.UndoRedo):
 
     def colour(self):
         return 'blue'
+
+    def undo(self, model):
+        model.set_mark(self.line, self.column)
 
     def save(self, cursor, type):
         memento.UndoRedo.save(self,cursor)
@@ -341,6 +384,9 @@ class Left(Move):
     def name(self):
         return 'L'
 
+    def ask_option(self):
+        return u'\u2190'
+
     def redo(self, model):
         model.left()
 
@@ -364,6 +410,9 @@ class Right(Move):
 
     def name(self):
         return 'R'
+
+    def ask_option(self):
+        return u'\u2192'
 
     def redo(self, model):
         model.right()
@@ -389,6 +438,9 @@ class Up(Move):
     def name(self):
         return 'U'
 
+    def ask_option(self):
+        return u'\u2191'
+
     def redo(self, model):
         model.up()
 
@@ -412,6 +464,9 @@ class Down(Move):
 
     def name(self):
         return 'U'
+
+    def ask_option(self):
+        return u'\u2193'
 
     def redo(self, model):
         model.down()
